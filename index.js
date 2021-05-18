@@ -1,15 +1,19 @@
-import { recipesByProduct } from './fixtures';
-
 if (module.hot) {
   module.hot.accept();
 }
 
 window.dataStorage = {
   listOfProducts: ['apple', 'chicken', 'olive oil', 'garlic', 'milk', 'tomato', 'shallot', 'fish'],
-  searchBy: [],
+  querySet: [],
+  isDataLoading: false,
+  error: null,
+  recipes: [],
 };
 
 window.renderApp = renderApp;
+window.deleteListItem = deleteListItem;
+window.editQuerySet = editQuerySet;
+window.performSearch = performSearch;
 
 function renderApp() {
   document.getElementById('app-root').innerHTML = `
@@ -17,12 +21,9 @@ function renderApp() {
     `;
 }
 
-renderApp();
-
 function App() {
   return `<div>
     <h1>What's in your fridge</h1>
-    <p>Product   //  <span style="color: royalblue; font-weight: 700;">   Search by: </span> </p>
     ${ListOfProducts()}
     ${AddItemToList()}
     ${SearchRecipes()}
@@ -42,16 +43,18 @@ function ListOfProducts() {
                 name="product"
                 value="${product}"
                 style="width: 100px;"
-                onchange="window.defineQueryLine(this.value)"/>
+                onchange="window.editQuerySet(this.value)"/>
         </label>
         <button value="${product}" onclick="window.deleteListItem(this.value)">delete</button>
       </li>`),
   );
-  return `<ul>${content}</ul>`;
+  return content
+    ? `<p>Product /<span style="color: royalblue; font-weight: 700;"> Search by:</span> </p><ul>${content}</ul>`
+    : content;
 }
 
 function AddItemToList() {
-  return `<h2>Add item:</h2>
+  return `<h2>Add products to your fridge:</h2>
         <input
             type="text"
             onchange="window.dataStorage.listOfProducts.push(this.value);
@@ -66,18 +69,23 @@ function deleteListItem(value) {
   window.renderApp();
 }
 
-window.deleteListItem = deleteListItem;
-
 function SearchRecipes() {
-  const query = window.dataStorage.searchBy.join(' ');
-  const answer = recipesByProduct[query];
+  const { recipes, isDataLoading, error, querySet } = window.dataStorage;
+  const query = querySet.join(', ');
   const content = `<h2>Search recipes by chosen products</h2>
-  <p>Pick items, for example: "apple", "fish" or "chicken + olive oil + garlic" in the list above and click "Search" button.</p>
-  <button onclick="window.renderApp()" style="color: royalblue; font-weight: 700;">Search</button> <br>`;
+  <p>Pick items in the list above and click "Search" button.</p>
+  <button onclick="window.performSearch();" style="color: royalblue; font-weight: 700;">Search</button>`;
   let recipesContent = ``;
 
-  if (answer) {
-    recipesContent += answer
+  if (isDataLoading) {
+    recipesContent = `<span>for ${query}</span><br>Loading...`;
+  }
+  if (error !== null) {
+    recipesContent = error;
+  }
+  if (recipes.length > 0) {
+    recipesContent = `Results for: ${query}`;
+    recipesContent += recipes
       .map(({ recipe: { label, image, url, ingredientLines } }) => {
         return `
           <li>
@@ -97,19 +105,57 @@ function SearchRecipes() {
       .join('');
   }
 
-  window.dataStorage.searchBy = [];
-
-  return `${content} <span>Query: ${query}</span><br> ${recipesContent} ${
-    !!answer || !!query ? 'No result!' : ''
-  }`;
+  return content + recipesContent;
 }
 
-function defineQueryLine(value) {
-  if (window.dataStorage.searchBy.includes(value)) {
-    window.dataStorage.searchBy.splice(window.dataStorage.searchBy.indexOf(value), 1);
+function editQuerySet(value) {
+  if (window.dataStorage.querySet.includes(value)) {
+    window.dataStorage.querySet.splice(window.dataStorage.querySet.indexOf(value), 1);
   } else {
-    window.dataStorage.searchBy.push(value);
+    window.dataStorage.querySet.push(value);
   }
 }
 
-window.defineQueryLine = defineQueryLine;
+function loadData() {
+  const query = window.dataStorage.querySet.join(' ');
+  const url = `https://api.edamam.com/search?q=${query}&app_id=${process.env.EDAMAM_RECIPE_SEARCH_API_ID}&app_key=${process.env.EDAMAM_RECIPE_SEARCH_API_KEY}&from=0&to=5`;
+
+  if (query === '') {
+    const error = 'No products for request is chosen!';
+    return Promise.resolve({ error });
+  }
+  window.dataStorage.isDataLoading = true;
+  window.renderApp();
+
+  return fetch(url)
+    .then(response => response.json())
+    .then(data => ({ data }));
+}
+
+function performSearch() {
+  window.dataStorage.error = null;
+  window.dataStorage.recipes = [];
+
+  loadData()
+    .then(({ error, data }) => {
+      window.dataStorage.isDataLoading = false;
+
+      if (error) {
+        window.dataStorage.error = error;
+      } else if (data) {
+        const { hits } = data;
+        if (hits.length > 0) {
+          window.dataStorage.recipes = hits;
+        } else {
+          window.dataStorage.error = 'For your request is no answer.';
+        }
+      }
+    })
+    .catch(() => (window.dataStorage.error = 'Some error occurred.'))
+    .finally(() => {
+      window.renderApp();
+      window.dataStorage.querySet = [];
+    });
+}
+
+renderApp();
