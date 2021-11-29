@@ -1,4 +1,4 @@
-# What's in my fridge What can I cook
+# My kingdom fridge
 **The project for Kottans FE 2021 Course.**  
 The app holds the list of products that are in your fridge right now. It's allowed to be edited any time the situation changed. Well, it's all under your control.  
 Another key feature is picking up some recipes that are available for cooking according to ingredients in your fridge. You don't need to explore cooking books beforehand anymore.
